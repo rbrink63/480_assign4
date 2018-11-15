@@ -12,7 +12,7 @@
 `define EQ      2'b10
 `define NE      2'b11
 `define Opcode  [13:9]
-`define isReg   [8]
+`define isImm   [8]
 `define Dest    [7:4]
 `define Op2     [3:0]
 
@@ -42,7 +42,10 @@
 `define OPstr		5'h1a
 `define OPsys		5'b11111
 
-
+//Float defines
+`define Fsign [15]
+`define Fexp [14:7]
+`define Ftrail [6:0]
 
 module stageZero(PCchange,waitFlag,clk,reset,instOut,pc);
 
@@ -151,7 +154,7 @@ module stageOne(clk ,reset, instIn, PC,registerWrite ,regToWrite, dataToReg,inst
     
       if((instIn `Opcode != `OPsys && instIn `Opcode != `OPpre && instIn != `NOP) && waitFlag == 0)
       begin
-        case(instIn `isReg)
+        case(instIn `isImm)
           1: begin op2 <= instIn `Op2;
                    Rd  <= regfile[instIn `Dest]; end
           0: begin op2 <= regfile[instIn `Op2];  
@@ -219,7 +222,7 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
 
       else 
         begin
-          if((instIn `Opcode != `OPldr && instIn `Opcode != `OPstr) && posFlag == 0 && instIn `isReg != 0)
+          if((instIn `Opcode != `OPldr && instIn `Opcode != `OPstr) && posFlag == 0 && instIn `isImm != 0)
             begin
               case(op2In[3])
                 1'b0: begin operand2 = op2In; end
@@ -247,6 +250,12 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
           `OPstr: begin result  <= Rd; op2Out<=operand2; end
           `OPslt: begin result  <= (Rd < (operand2)); end
           `OPsys: begin end
+	  `OPaddf: begin end
+	  `OPftoi: begin end
+	  `OPitof: begin end
+	  `OPmulf: begin end
+	  `OPrecf: begin end
+	  `OPsubf: begin end
           default: begin instOut `Opcode <= `OPsys; instOut `CC <= instIn `CC; end
         endcase
       end
@@ -256,6 +265,53 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
     
 endmodule
 
+module int_to_float(out, in, clk);
+	input `WORD in;
+	input clk;
+	output reg `WORD out;
+	
+	wire [4:0] d;	
+	//module lead0s(d, s);
+	lead0s zero_counter(d,in);		
+	reg [6:0] extra_zeros;
+	reg [22:0] in_plus_zeros, twos_in_plus_zeros;
+
+	//need regs for components of float
+	reg sign;
+	reg [7:0] exponent;
+	reg [6:0] mantissa;
+
+	initial begin
+		//we need these because worst case we have the int 1 which would have 15 leading zeros
+		//so we grab the 1 and need 7 more bits
+		extra_zeros = 7'b0;
+	end	
+	
+	always @(posedge clk) begin
+		if(in == 16'h0000) begin
+			out <= 16'h0000;
+		end
+		else begin
+			//set sign
+			sign = in `Fsign;
+			
+			//from Dietz's notes: take the most significant 1 + 7 more bits
+			//so we need to count leading zeros
+			in_plus_zeros = {in,extra_zeros};
+			twos_in_plus_zeros = {((in ^ 16'hFFFF) + 16'h0001),extra_zeros};
+		
+			//positive and negative ints need to handled differently	
+			case(sign)
+				1'b0: begin mantissa = in_plus_zeros >> (15-d); end
+				1'b1: begin mantissa = twos_in_plus_zeros >> (15-d); end
+			endcase
+			
+			//set exponent
+			exponent = 127 + (15-d);
+		end
+			
+	end
+endmodule
 
 module stageThree(clk,reset, instIn, result,op2, registerWrite,regToWrite, dataToReg, PCchange,halt);
   input clk, reset;
@@ -378,7 +434,21 @@ module stageThree(clk,reset, instIn, result,op2, registerWrite,regToWrite, dataT
 
 endmodule
 
-
+//source: http://aggregate.org/EE480/slidesS1610.pdf
+module lead0s(d, s);
+	output reg[4:0] d; input wire[15:0] s;
+	reg[7:0] s8; reg[3:0] s4; reg[1:0] s2;
+	
+	always @(*) begin
+		if (s[15:0] == 0) d = 16; else begin
+		d[4] = 0;
+		{d[3],s8} = ((|s[15:8]) ? {1'b0,s[15:8]} : {1'b1,s[7:0]}); 
+		{d[2],s4} = ((|s8[7:4]) ? {1'b0,s8[7:4]} : {1'b1,s8[3:0]}); 
+		{d[1],s2} = ((|s4[3:2]) ? {1'b0,s4[3:2]} : {1'b1,s4[1:0]}); 
+		d[0] = !s2[1];
+		end 
+	end
+endmodule
 
 module processor(halt, reset, clock);
   output wire halt;
