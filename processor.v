@@ -182,11 +182,16 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
   output reg  `WORD op2Out;
 
   integer cycles = 2;  
-  
+    
+  wire `WORD itof_result;
   reg `WORD operand2;
   reg [11:0] pre;
   reg posFlag = 0;
   reg usePre = 0;
+
+//module int_to_float(out, in, clk);
+  int_to_float itof_mod(itof_result, operand2, clk);
+
 
   always @(reset) begin
     halt = 0;
@@ -234,7 +239,10 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
               operand2 = op2In;
             end
         end 
-      if(instIn != `NOP && instIn[13:12] != `OPpre) begin
+
+//	if (cycles != 0)begin cycles = cycles - 1; end
+//	else if(instIn != `NOP && instIn[13:12] != `OPpre) begin
+	if(instIn != `NOP && instIn[13:12] != `OPpre) begin
         case(instIn `Opcode)
           `OPadd: begin result  <= Rd + operand2; $display("$time:%x [2] Rd:%x + operand2:%x instIn:%x",$time,Rd,operand2,instIn); end
           `OPsub: begin result  <= Rd - operand2; $display("$time:%x [2] Rd:%x - operand2:%x instIn:%x",$time,Rd,operand2,instIn); end
@@ -252,7 +260,7 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
           `OPsys: begin end
 	  `OPaddf: begin end
 	  `OPftoi: begin end
-	  `OPitof: begin end
+	  `OPitof: begin result <= itof_result; end
 	  `OPmulf: begin end
 	  `OPrecf: begin end
 	  `OPsubf: begin end
@@ -289,7 +297,7 @@ module int_to_float(out, in, clk);
 	
 	always @(posedge clk) begin
 		if(in == 16'h0000) begin
-			out <= 16'h0000;
+			out = 16'h0000;
 		end
 		else begin
 			//set sign
@@ -308,6 +316,8 @@ module int_to_float(out, in, clk);
 			
 			//set exponent
 			exponent = 127 + (15-d);
+
+			out = {sign, exponent, mantissa};
 		end
 			
 	end
