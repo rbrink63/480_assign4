@@ -183,7 +183,7 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
 
   integer cycles = 2;  
     
-  wire `WORD itof_result;
+  wire `WORD itof_result, ftoi_result;
   reg `WORD operand2;
   reg [11:0] pre;
   reg posFlag = 0;
@@ -191,6 +191,7 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
 
 //module int_to_float(out, in, clk);
   int_to_float itof_mod(itof_result, operand2, clk);
+  float_to_int ftoi_mod(ftoi_result, operand2, clk);
 
 
   always @(reset) begin
@@ -259,7 +260,7 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
           `OPslt: begin result  <= (Rd < (operand2)); end
           `OPsys: begin end
 	  `OPaddf: begin end
-	  `OPftoi: begin $display("I'm float to int-ing"); end
+	  `OPftoi: begin result <= ftoi_result; end
 	  //`OPitof: begin waitFlag <= 1'b1; result <= itof_result; end
 	  `OPitof: begin result <= itof_result; end
 	  `OPmulf: begin end
@@ -272,6 +273,41 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
       
     end
     
+endmodule
+
+module float_to_int(out, in, clk);
+	input `WORD in;
+	input clk;
+	output reg `WORD out;
+	wire `WORD barrel_result;
+
+	wire sign;
+	reg [7:0] exponent;
+	reg `WORD mantissa;
+	reg `WORD exp_less_bias;
+	
+	reg [7:0] extra_zeros;
+	reg [22:0] in_plus_zeros;
+
+	initial begin	
+	    extra_zeros = 8'b0;
+	end	
+
+
+	//barrel shift integer appropriately
+	//module barrel_shift(dst, src, shift);
+	barrel_shift my_shifter(barrel_result, mantissa, exp_less_bias);
+
+	//negate if sign was set
+
+
+	always @ (posedge clk)begin
+	    //take positive 8bit fraction part
+	    mantissa = {1'b1, in[6:0], extra_zeros[7:0]};
+	    exp_less_bias = exponent - 127;
+	    out = barrel_result;
+
+	end
 endmodule
 
 module int_to_float(out, in, clk);
@@ -312,6 +348,7 @@ module int_to_float(out, in, clk);
 			//positive and negative ints need to handled differently	
 			case(sign)
 				1'b0: begin mantissa = in_plus_zeros >> (15-d); end
+				//1'b1: begin mantissa = (twos_in_plus_zeros >> (15-d)) + 1'b1; end
 				1'b1: begin mantissa = twos_in_plus_zeros >> (15-d); end
 			endcase
 			
@@ -443,6 +480,19 @@ module stageThree(clk,reset, instIn, result,op2, registerWrite,regToWrite, dataT
         end
     end
 
+endmodule
+
+//http://aggregate.org/EE480/slidesS1610.pdf
+module barrel_shift(dst, src, shift);
+output reg `WORD dst; input wire `WORD src, shift;
+reg `WORD by1, by2, by4, by8;
+always @(*) begin
+  by1 = (shift[0] ? {1'b0, src[15:1]} : src);
+  by2 = (shift[1] ? {2'b0, by1[15:2]} : by1);
+  by4 = (shift[2] ? {4'b0, by2[15:4]} : by2);
+  by8 = (shift[3] ? {8'b0, by4[15:8]} : by4);
+  dst = (shift[15:7] ? 0 : by8);
+end
 endmodule
 
 //source: http://aggregate.org/EE480/slidesS1610.pdf
