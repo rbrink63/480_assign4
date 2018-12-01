@@ -286,9 +286,11 @@ module int_to_float(out, in, clk);
 	reg [22:0] in_plus_zeros, twos_in_plus_zeros;
 
 	//need regs for components of float
-	reg sign;
+	wire sign;
 	reg [7:0] exponent;
 	reg [6:0] mantissa;
+
+	assign sign = in `Fsign;
 
 	initial begin
 		//we need these because worst case we have the int 1 which would have 15 leading zeros
@@ -301,8 +303,6 @@ module int_to_float(out, in, clk);
 			out = 16'h0000;
 		end
 		else begin
-			//set sign
-			sign = in `Fsign;
 			
 			//from Dietz's notes: take the most significant 1 + 7 more bits
 			//so we need to count leading zeros
