@@ -259,7 +259,8 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
           `OPslt: begin result  <= (Rd < (operand2)); end
           `OPsys: begin end
 	  `OPaddf: begin end
-	  `OPftoi: begin end
+	  `OPftoi: begin $display("I'm float to int-ing"); end
+	  //`OPitof: begin waitFlag <= 1'b1; result <= itof_result; end
 	  `OPitof: begin result <= itof_result; end
 	  `OPmulf: begin end
 	  `OPrecf: begin end
