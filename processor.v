@@ -318,10 +318,12 @@ module int_to_float(out, in, clk);
 	output reg `WORD out;
 	
 	wire [4:0] d;	
-	//module lead0s(d, s);
-	lead0s zero_counter(d,in);		
 	reg [6:0] extra_zeros;
 	reg [22:0] in_plus_zeros, twos_in_plus_zeros;
+	wire `WORD zero_count_input;
+	
+	//module lead0s(d, s);
+	lead0s zero_counter(d,zero_count_input);		
 
 	//need regs for components of float
 	wire sign;
@@ -329,6 +331,8 @@ module int_to_float(out, in, clk);
 	reg [6:0] mantissa;
 
 	assign sign = in `Fsign;
+	assign zero_count_input = {(sign == 1) ? ((in ^ 16'hFFFF) + 1'b1) : in};
+	
 
 	initial begin
 		//we need these because worst case we have the int 1 which would have 15 leading zeros
