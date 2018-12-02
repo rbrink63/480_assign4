@@ -45,7 +45,7 @@
 //Float defines
 `define Fsign [15]
 `define Fexp [14:7]
-`define Ftrail [6:0]
+`define Fman [6:0]
 
 module stageZero(PCchange,waitFlag,clk,reset,instOut,pc);
 
@@ -278,34 +278,36 @@ endmodule
 module float_to_int(out, in, clk);
 	input `WORD in;
 	input clk;
-	output reg `WORD out;
-	wire `WORD barrel_result;
+	output reg `WORD out, out_temp;
+	wire `WORD shifted_result;
 
 	wire sign;
 	reg [7:0] exponent;
-	reg `WORD mantissa;
+	reg [22:0] mantissa, left_shift, right_shift;
 	reg `WORD exp_less_bias;
 	
-	reg [7:0] extra_zeros;
-	reg [22:0] in_plus_zeros;
+	reg [15:0] man_pad;
 
 	initial begin	
-	    extra_zeros = 8'b0;
+	    man_pad = 16'h1;
 	end	
-
-
-	//barrel shift integer appropriately
-	//module barrel_shift(dst, src, shift);
-	barrel_shift my_shifter(barrel_result, mantissa, exp_less_bias);
-
-	//negate if sign was set
-
+	
+	assign sign = in `Fsign;
 
 	always @ (posedge clk)begin
 	    //take positive 8bit fraction part
-	    mantissa = {1'b1, in[6:0], extra_zeros[7:0]};
+	    exponent = in `Fexp;
+	    mantissa = {man_pad, in `Fman};
 	    exp_less_bias = exponent - 127;
-	    out = barrel_result;
+	    left_shift = mantissa << exp_less_bias;
+
+            out_temp = {(exp_less_bias > 0) ? left_shift[22:7] : 22'h0};
+
+	    if (sign)begin 
+		out = (out_temp ^ 16'hFFFF) + 1'b1;
+	    end else begin
+		out = out_temp;
+	    end
 
 	end
 endmodule
@@ -483,17 +485,27 @@ module stageThree(clk,reset, instIn, result,op2, registerWrite,regToWrite, dataT
 endmodule
 
 //http://aggregate.org/EE480/slidesS1610.pdf
-module barrel_shift(dst, src, shift);
-output reg `WORD dst; input wire `WORD src, shift;
-reg `WORD by1, by2, by4, by8;
-always @(*) begin
-  by1 = (shift[0] ? {1'b0, src[15:1]} : src);
-  by2 = (shift[1] ? {2'b0, by1[15:2]} : by1);
-  by4 = (shift[2] ? {4'b0, by2[15:4]} : by2);
-  by8 = (shift[3] ? {8'b0, by4[15:8]} : by4);
-  dst = (shift[15:7] ? 0 : by8);
-end
-endmodule
+//module barrel_shift(dst, src, shift);
+//output reg `WORD dst; input wire `WORD shift; input wire src [22:0];
+//reg [22:0] by1, by2, by4, by8;
+//always @(*) begin
+//  by1 = (shift[0] ? {1'b0, src[15:1]} : src);
+//  by2 = (shift[1] ? {2'b0, by1[15:2]} : by1);
+//  by4 = (shift[2] ? {4'b0, by2[15:4]} : by2);
+//  by8 = (shift[3] ? {8'b0, by4[15:8]} : by4);
+//  dst = (shift[15:7] ? 0 : by8);
+//end
+//endmodule
+//module barrel_shift(dst, src, shift);
+//output reg [7:0] dst; input wire [7:0] src, shift;
+//reg `WORD by1, by2, by4, by8;
+//always @(*) begin
+//  by1 = (shift[0] ? {1'b0, src[7:1]} : src);
+//  by2 = (shift[1] ? {2'b0, by1[7:2]} : by1);
+//  by4 = (shift[2] ? {4'b0, by2[7:4]} : by2);
+//  dst = (shift[7:3] ? 0 : by4);
+//end
+//endmodule
 
 //source: http://aggregate.org/EE480/slidesS1610.pdf
 module lead0s(d, s);
