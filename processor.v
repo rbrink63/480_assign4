@@ -171,6 +171,50 @@ module stageOne(clk ,reset, instIn, PC,registerWrite ,regToWrite, dataToReg,inst
 
 endmodule
 
+module mul_float(out, a, b, clk);
+    input `WORD a, b;
+    input clk;
+    output reg `WORD out;
+
+    reg [7:0] temp_exponent;
+    reg `WORD temp_mantissa; //result of multiplying two 8bit nums could be as large as 16 bits
+
+    reg [6:0] out_man;
+    reg [7:0] out_exp;
+
+    wire diff_sign;
+
+    //check if the sign of the operands is different
+    assign diff_sign = a `Fsign ^ b `Fsign;
+    //if diff_sign == 1 then the output is neg
+    //if diff_sign == 0 then the output is pos
+   
+    always @ (posedge clk)begin
+	//if (a == 16'h0 || b == 16'h0)begin
+	//    out = 16'h0;	
+    	//end
+	//else begin
+	    //add exponents
+    	    temp_exponent = a `Fexp  + b `Fexp;
+    	    
+    	    //multiply mantissas
+    	    //add in implicit 1 at the top of the mantissa before multiplication
+    	    temp_mantissa = {1'b1, a `Fman} * {1'b1, b `Fman};
+
+	    case (temp_mantissa[15])
+		1'b0: begin out_exp = temp_exponent - 126; out_man = temp_mantissa[15:9]; end
+		//add 1 to  exp if there is an overflow in mantissa
+		//multiplication
+		1'b1: begin out_exp = temp_exponent - 126; out_man = temp_mantissa[14:8]; end
+	    endcase
+
+	    out `Fsign = diff_sign;
+	    out `Fexp = out_exp;
+	    out `Fman = out_man;
+	    		    
+//	end    	
+    end
+endmodule
 
 module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
   input clk,reset;
@@ -183,7 +227,7 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
 
   integer cycles = 2;  
     
-  wire `WORD itof_result, ftoi_result;
+  wire `WORD itof_result, ftoi_result, mulf_result;
   reg `WORD operand2;
   reg [11:0] pre;
   reg posFlag = 0;
@@ -192,6 +236,8 @@ module stageTwo(clk,reset,instIn,Rd,op2In,instOut,result, op2Out,halt);
 //module int_to_float(out, in, clk);
   int_to_float itof_mod(itof_result, operand2, clk);
   float_to_int ftoi_mod(ftoi_result, operand2, clk);
+//module mul_float(out, a, b, clk);
+  mul_float mulf_mod(mulf_result, Rd, operand2, clk);
 
 
   always @(reset) begin
