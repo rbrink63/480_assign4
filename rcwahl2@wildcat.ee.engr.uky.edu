@@ -1,0 +1,88 @@
+* Simulates input cap against voltage
+
+
+.opt compat
+.opt tuning=vhigh
+.opt post=1
+.opt NEWACCT
+* .opt hmax=1p
+
+
+* Models
+.prot
+.inc /disks/iptg/WS/iptguser_s8_stdcell_char_dev_507/s8_stdcell_char/char/s8_models/s8p-5r/models.3.5/tt.cor
+.unprot
+
+* netlist
+.inc /disks/iptg/WS/iptguser_scs8hd_dev_1217/scs8hd/opus/scs8hd/scs8hd_buf_1/extracted_unred/spice.sp
+
+Xdut vnb vpb X A vgnd vpwr scs8hd_buf_1 
+* Cdut A 0 1f
+
+.param freq = 1E9
+.param period = '1/freq'
+.param angFreq = 'freq*2*3.14159'
+.param acAmp = 0.01
+.param dcIn = 0
+.param pi = 3.141592654
+
+vvpwr   vpwr   0     dc 1.95  
+vvpb    vpb    0     dc 1.95  
+vvgnd   vgnd   0     dc 0
+vvnb    vnb    0     dc 0
+
+* vA_ac    A1     0     ac 0.01   0
+*                          offset   amplitude  Freq
+
+
+* Transient voltage source
+* vA_dc    A     0     sin   ('dcIn'   'acAmp'     'freq' )
+
+* AC analysis voltage source
+vA_dc    A     0     dc 'dcIn' ac 'acAmp'
+
+* .probe v i
+.plot ac STEP=0.01p v(*)
+.plot ac STEP=0.01p i(*)
+
+* .tran 0.01p 100n SWEEP dcIn 0 1.95 0.1
+* .tran 0.001p 'period*30'
+.ac dec 100 'freq' 'freq' SWEEP dcIn 0 1.95 0.1
+
+* Transient measurements
+****  * Calculate V AC magnitude
+****  * max(WAVE, [, MIN, MAX]) 
+****  .extract tran LABEL=sigVmax max( v(A), 'period*10', 'period*20' ) 
+****  .extract tran LABEL=sigVmin min( v(A), 'period*10', 'period*20' ) 
+****  .extract tran LABEL=sigVmag 'sigVmax-sigVmin'
+****  .extract tran LABEL=sigVmid 'sigVmax-sigVmag/2'
+****  
+****  * Calculate I AC magnitude
+****  .extract tran LABEL=sigImax max( i(vA_dc), 'period*10', 'period*20' ) 
+****  .extract tran LABEL=sigImin min( i(vA_dc), 'period*10', 'period*20' ) 
+****  .extract tran LABEL=sigImag 'sigImax-sigImin'
+****  .extract tran LABEL=sigImid 'sigImax-sigImag/2'
+****  
+****  * Calculate phase shift
+****  * TPD is propagation delay
+****  * .extract tran LABEL=iDelay TPD( v(A), i(vA_dc), vthin='extract(sigVmid)', vthout='extract(sigImid)')
+****  .extract LABEL=iDelay TPD( v(A), i(vA_dc), vthin=0, vthout=0)
+****  .extract tran LABEL=phase 'iDelay/(period/4) * pi/2'
+****  
+****  .extract LABEL=vComplex  'mptocomplex(sigVmag,0)'
+****  * .param iComplex = mptocomplex(sigImag,phase)
+
+.extract ac label=acVreal 'vr(A)'
+.extract ac label=acVim 'vm(A)'
+.extract ac label=acIreal 'ir(vA_dc)'
+.extract ac label=acIim 'im(vA_dc)'
+.extract ac LABEL=iComp 'complex(acIreal,acIim)'
+.extract ac LABEL=imped  'complex(acVreal,0)/complex(acIreal,acIim)'
+.extract ac LABEL=myCap '1/(imag(complex(acVreal,0)/complex(acIreal,acIim))*angFreq)'
+.extract ac LABEL=myRes 'real(complex(acVreal,0)/complex(acIreal,acIim))'
+
+* .printfile dcIn myCap myRes file=output
+.printfile ac extract(myRes) extract(myCap) file=output.txt format=DATA
+
+* .param myComplex = ritocomplex(acIreal,acIim)
+
