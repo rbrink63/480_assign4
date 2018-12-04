@@ -59,7 +59,7 @@ reg `ADDR tpc, pc0, pc1;
 reg `INST ir;		// instruction register
 reg `INST ir0, ir1;
 reg `DATA im0, rd1, rn1, res;
-wire `DATA itof_res;
+wire `DATA itof_res, ftoi_res, mulf_res;
 reg `ADDR target;	// jump target
 reg jump;		// are we jumping?
 reg zreg;		// z flag
@@ -71,6 +71,8 @@ reg havepre;		// is prefix valid?
 
 
 int_to_float itof_mod(itof_res, rn1, clk);
+float_to_int ftoi_mod(ftoi_res, rn1, clk);
+mul_float mulf_mod(mulf_res, rd1, rn1, clk); 
 
 always @(reset) begin
   halt = 0;
@@ -254,6 +256,88 @@ always @(posedge clk) begin
     end else jump <= 0;
   end
 end
+endmodule
+
+module mul_float(out, a, b, clk);
+    input `DATA a, b;
+    input clk;
+    output reg `DATA out;
+
+    reg [7:0] temp_exponent;
+    reg `DATA temp_mantissa; //result of multiplying two 8bit nums could be as large as 16 bits
+
+    reg [6:0] out_man;
+    reg [7:0] out_exp;
+
+    wire diff_sign;
+
+    //check if the sign of the operands is different
+    assign diff_sign = a `Fsign ^ b `Fsign;
+    //if diff_sign == 1 then the output is neg
+    //if diff_sign == 0 then the output is pos
+   
+    always @ (posedge clk)begin
+	//if (a == 16'h0 || b == 16'h0)begin
+	//    out = 16'h0;	
+    	//end
+	//else begin
+	    //add exponents
+    	    temp_exponent = a `Fexp  + b `Fexp;
+    	    
+    	    //multiply mantissas
+    	    //add in implicit 1 at the top of the mantissa before multiplication
+    	    temp_mantissa = {1'b1, a `Fman} * {1'b1, b `Fman};
+
+	    case (temp_mantissa[15])
+		1'b0: begin out_exp = temp_exponent - 126; out_man = temp_mantissa[15:9]; end
+		//add 1 to  exp if there is an overflow in mantissa
+		//multiplication
+		1'b1: begin out_exp = temp_exponent - 126; out_man = temp_mantissa[14:8]; end
+	    endcase
+
+	    out `Fsign = diff_sign;
+	    out `Fexp = out_exp;
+	    out `Fman = out_man;
+	    		    
+//	end    	
+    end
+endmodule
+
+module float_to_int(out, in, clk);
+	input `DATA in;
+	input clk;
+	output reg `DATA out, out_temp;
+	wire `DATA shifted_result;
+
+	wire sign;
+	reg [7:0] exponent;
+	reg [22:0] mantissa, left_shift, right_shift;
+	reg `DATA exp_less_bias;
+	
+	reg [15:0] man_pad;
+
+	initial begin	
+	    man_pad = 16'h1;
+	end	
+	
+	assign sign = in `Fsign;
+
+	always @ (posedge clk)begin
+	    //take positive 8bit fraction part
+	    exponent = in `Fexp;
+	    mantissa = {man_pad, in `Fman};
+	    exp_less_bias = exponent - 127;
+	    left_shift = mantissa << exp_less_bias;
+
+            out_temp = {(exp_less_bias > 0) ? left_shift[22:7] : 22'h0};
+
+	    if (sign)begin 
+		out = (out_temp ^ 16'hFFFF) + 1'b1;
+	    end else begin
+		out = out_temp;
+	    end
+
+	end
 endmodule
 
 module int_to_float(out, in, clk);
