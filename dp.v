@@ -16,6 +16,11 @@
 `define NE	2
 `define EQ	3
 
+//Float defines
+`define Fsign [15]
+`define Fexp [14:7]
+`define Fman [6:0]
+
 // opcode values, also state numbers
 `define OPPRE		5'h00
 `define OPADD		5'h08
@@ -54,14 +59,18 @@ reg `ADDR tpc, pc0, pc1;
 reg `INST ir;		// instruction register
 reg `INST ir0, ir1;
 reg `DATA im0, rd1, rn1, res;
+wire `DATA itof_res;
 reg `ADDR target;	// jump target
 reg jump;		// are we jumping?
 reg zreg;		// z flag
 wire pendz;		// z update pending?
 wire pendpc;		// pc update pending?
-reg wait1;		// need to stall in stage 1?
+reg wait1, wait2;		// need to stall in stage 1, or stage 2?
 reg [11:0] prefix;	// 12-bit prefix value
 reg havepre;		// is prefix valid?
+
+
+int_to_float itof_mod(itof_res, rn1, clk);
 
 always @(reset) begin
   halt = 0;
@@ -126,6 +135,7 @@ input `INST inst;
 usesrn = ((!(inst `IORR)) && (inst `OP <= `OPSTR));
 endfunction
 
+
 // pending z update?
 assign pendz = (setsz(ir0) || setsz(ir1));
 
@@ -170,7 +180,10 @@ end
 
 // stage 1: register read
 always @(posedge clk) begin
-  if ((ir0 != `NOP) &&
+    if (wait2 == 1'b1) begin 
+	wait1 = 1;
+    end
+    else if ((ir0 != `NOP) &&
       setsrd(ir1) &&
       ((usesrd(ir0) && (ir0 `RD == ir1 `RD)) ||
        (usesrn(ir0) && (ir0 `RN == ir1 `RD)))) begin
@@ -194,7 +207,13 @@ always @(posedge clk) begin
       ((ir1 `CC == `NE) && (zreg == 1))) begin
     // condition says nothing happens
     jump <= 0;
+    wait2 <= 0;
+ end else if (ir1 `OP >= 5'h11 && ir1 `OP <= 5'h16) begin
+    //float operation, need to stall
+     wait2 = 1;
+     ir1 = `NOP;
   end else begin
+    wait2 = 0;
     // let the instruction execute
     case (ir1 `OP)
       `OPPRE:  begin end // do nothing
@@ -213,7 +232,7 @@ always @(posedge clk) begin
       `OPSTR:  begin res = rd1; d[rn1] <= res; end
       //`OPADDF:
       //`OPFTOI:
-      //`OPITOF: 
+      `OPITOF: begin res = itof_res; end
       //`OPMULF: 
       //`OPRECF: 
       //`OPSUBF: 
@@ -237,13 +256,83 @@ always @(posedge clk) begin
 end
 endmodule
 
+module int_to_float(out, in, clk);
+	input `DATA in;
+	input clk;
+	output reg `DATA out;
+	
+	wire [4:0] d;	
+	reg [6:0] extra_zeros;
+	reg [22:0] in_plus_zeros, twos_in_plus_zeros;
+	wire `DATA zero_count_input;
+	
+	//module lead0s(d, s);
+	lead0s zero_counter(d,zero_count_input);		
+
+	//need regs for components of float
+	wire sign;
+	reg [7:0] exponent;
+	reg [6:0] mantissa;
+
+	assign sign = in `Fsign;
+	assign zero_count_input = {(sign == 1) ? ((in ^ 16'hFFFF) + 1'b1) : in};
+	
+
+	initial begin
+		//we need these because worst case we have the int 1 which would have 15 leading zeros
+		//so we grab the 1 and need 7 more bits
+		extra_zeros = 7'b0;
+	end	
+	
+	always @(posedge clk) begin
+		if(in == 16'h0000) begin
+			out = 16'h0000;
+		end
+		else begin
+			
+			//from Dietz's notes: take the most significant 1 + 7 more bits
+			//so we need to count leading zeros
+			in_plus_zeros = {in,extra_zeros};
+			twos_in_plus_zeros = {((in ^ 16'hFFFF) + 16'h0001),extra_zeros};
+		
+			//positive and negative ints need to handled differently	
+			case(sign)
+				1'b0: begin mantissa = in_plus_zeros >> (15-d); end
+				//1'b1: begin mantissa = (twos_in_plus_zeros >> (15-d)) + 1'b1; end
+				1'b1: begin mantissa = twos_in_plus_zeros >> (15-d); end
+			endcase
+			
+			//set exponent
+			exponent = 127 + (15-d);
+
+			out = {sign, exponent, mantissa};
+		end
+			
+	end
+endmodule
+
+module lead0s(d, s);
+	output reg[4:0] d; input wire[15:0] s;
+	reg[7:0] s8; reg[3:0] s4; reg[1:0] s2;
+	
+	always @(*) begin
+		if (s[15:0] == 0) d = 16; else begin
+		d[4] = 0;
+		{d[3],s8} = ((|s[15:8]) ? {1'b0,s[15:8]} : {1'b1,s[7:0]}); 
+		{d[2],s4} = ((|s8[7:4]) ? {1'b0,s8[7:4]} : {1'b1,s8[3:0]}); 
+		{d[1],s2} = ((|s4[3:2]) ? {1'b0,s4[3:2]} : {1'b1,s4[1:0]}); 
+		d[0] = !s2[1];
+		end 
+	end
+endmodule
+
 module testbench;
 reg reset = 0;
 reg clk = 0;
 wire halted;
 processor PE(halted, reset, clk);
 initial begin
-  $dumpfile;
+  $dumpfile("dumpfile.vcd");
   $dumpvars(0, PE);
   #10 reset = 1;
   #10 reset = 0;
