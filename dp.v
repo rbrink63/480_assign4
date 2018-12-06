@@ -274,6 +274,7 @@ module add_float(out, a, b, clk);
     wire [7:0] shift_out;
     wire [7:0] a_exp, b_exp;
     wire [6:0] a_man, b_man;
+    wire [4:0] num_zs;
 
     //just for viewing in GTKwave
     assign a_exp = a `Fexp;
@@ -284,6 +285,7 @@ module add_float(out, a, b, clk);
     assign small_man = {2'b01, shift_out[6:0]};
     
     barrel_shift addf_bs(shift_out, shift_in, shift_amt);
+    lead0s addf_zcount(num_zs,{temp_man, 7'h00});		
 
     always@(posedge clk)begin
 	//if they're both 0 then output is 0
@@ -320,8 +322,18 @@ module add_float(out, a, b, clk);
 	    if (temp_man[8])begin
 		//overflow
 		out_exp = big_exp + 1;
+		out_man = temp_man[7:1];
+	    end else begin
+		out_man = temp_man[6:0];
 	    end
-	end  
+	
+	end else begin
+	    //if signs are not equal 
+	    temp_man = big_man - small_man;	
+	    out_sign = (a `Fman > b`Fman) ? a `Fsign : b `Fsign;
+
+	    out_man = temp_man << num_zs;
+	end 
 	
 
 
