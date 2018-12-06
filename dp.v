@@ -59,7 +59,7 @@ reg `ADDR tpc, pc0, pc1;
 reg `INST ir;		// instruction register
 reg `INST ir0, ir1;
 reg `DATA im0, rd1, rn1, res;
-wire `DATA itof_res, ftoi_res, mulf_res;
+wire `DATA itof_res, ftoi_res, mulf_res, recf_res, addf_res, subf_res;
 reg `ADDR target;	// jump target
 reg jump;		// are we jumping?
 reg zreg;		// z flag
@@ -73,6 +73,9 @@ reg havepre;		// is prefix valid?
 int_to_float itof_mod(itof_res, rn1, clk);
 float_to_int ftoi_mod(ftoi_res, rn1, clk);
 mul_float mulf_mod(mulf_res, rd1, rn1, clk); 
+recip_float recf_mod(recf_res, rn1, clk);
+add_float addf_mod(addf_res, rd1, rn1, clk);
+sub_float subf_mod(subf_res, rd1, rn1, clk);
 
 always @(reset) begin
   halt = 0;
@@ -258,6 +261,140 @@ always @(posedge clk) begin
 end
 endmodule
 
+
+module add_float(out, a, b, clk);
+    input `DATA a, b;
+    input clk;
+    output reg `DATA out;
+    reg out_sign;
+    reg [8:0] big_man, temp_man;
+    reg [6:0] out_man;
+    wire [8:0] small_man;
+    reg [7:0] out_exp, big_exp, small_exp, shift_in, shift_amt;
+    wire [7:0] shift_out;
+    wire [7:0] a_exp, b_exp;
+    wire [6:0] a_man, b_man;
+
+    //just for viewing in GTKwave
+    assign a_exp = a `Fexp;
+    assign b_exp = b `Fexp;
+    assign a_man = a `Fman;
+    assign b_man = b `Fman;
+
+    assign small_man = {2'b01, shift_out[6:0]};
+    
+    barrel_shift addf_bs(shift_out, shift_in, shift_amt);
+
+    always@(posedge clk)begin
+	//if they're both 0 then output is 0
+	if (a == 16'h0000 && b == 16'h0000) out = 16'h0000;
+    	//if a is 0 then output is b
+    	else if (a == 16'h0000) out = b;
+    	//if b is 0 then output is a
+    	else if (b == 16'h0000) out = a;
+    	//otherwise do the thing
+    	else begin
+
+    	//barrel shift
+	if (a `Fexp > b `Fexp)begin
+	    shift_amt = a `Fexp - b `Fexp;
+	    shift_in = b `Fman;
+	    big_man = {2'b01, a `Fman};
+	    big_exp = a `Fexp;
+	    small_exp = b `Fexp;
+	end else begin
+	    shift_amt = b `Fexp - a `Fexp;
+	    shift_in = a `Fman;
+	    big_man = {2'b01, b `Fman};
+	    big_exp = b `Fexp;
+	    small_exp = a `Fexp;
+	end
+
+	//set output exponent to big_exp
+//	out_exp = big_exp;
+
+	//check signs
+	if (a `Fsign == b `Fsign)begin
+	    temp_man = big_man + small_man;
+	    out_sign = a `Fsign; //either sign would work
+	    if (temp_man[8])begin
+		//overflow
+		out_exp = big_exp + 1;
+	    end
+	end  
+	
+
+
+	
+        end
+
+	//out sign is handled above
+	out `Fexp = out_exp;
+	out `Fman = out_man;
+    end
+
+endmodule
+
+//http://aggregate.org/EE480/slidesS1610.pdf
+module barrel_shift(dst, src, shift);
+output reg [7:0] dst; input wire [7:0] src, shift;
+reg `DATA by1, by2, by4;
+always @(*) begin
+  by1 = (shift[0] ? {1'b0, src[7:1]} : src);
+  by2 = (shift[1] ? {2'b0, by1[7:2]} : by1);
+  by4 = (shift[2] ? {4'b0, by2[7:4]} : by2);
+  dst = (shift[7:3] ? 0 : by4);
+end
+endmodule
+
+module sub_float(out, a, b, clk);
+    input `DATA a, b;
+    input clk;
+    output reg `DATA out;
+    reg out_sign;
+    reg [6:0] out_man;
+    reg [7:0] out_exp;
+
+endmodule
+
+module recip_float(out, in, clk);
+    input `DATA in;
+    input clk;
+    output reg `DATA out;
+    reg [7:0] buff;
+    reg [7:0] lookup[0:127];
+    reg [6:0] out_man;
+    reg [7:0] out_exp;
+
+
+    initial begin
+	$readmemh("recf_lookup.txt",lookup,0,127);
+    end
+
+    always @(posedge clk) begin
+	if(in == 16'h0000)begin
+	 	out = 16'h0000;
+    	end else begin
+	   if(in[6:0] == 0) begin //checks mantissa for zeros 
+    	   out_exp = 254 - (in `Fexp);
+    	   end
+	   else begin
+    	   out_exp = 253 - (in `Fexp);
+    	   end
+    	   
+	   case(in `Fman)
+    	   7'b1: begin out_man = lookup[126]; end
+    	   default: begin  buff[7:0] = lookup[in `Fman]; out_man = buff [7:1]; end
+       	   endcase
+
+	   end
+	    
+	   out `Fsign = in `Fsign;
+	   out `Fexp = out_exp;
+	   out `Fman = out_man;
+    end
+endmodule
+
 module mul_float(out, a, b, clk);
     input `DATA a, b;
     input clk;
@@ -289,7 +426,7 @@ module mul_float(out, a, b, clk);
     	    temp_mantissa = {1'b1, a `Fman} * {1'b1, b `Fman};
 
 	    case (temp_mantissa[15])
-		1'b0: begin out_exp = temp_exponent - 126; out_man = temp_mantissa[15:9]; end
+		1'b0: begin out_exp = temp_exponent - 127; out_man = temp_mantissa[13:7]; end
 		//add 1 to  exp if there is an overflow in mantissa
 		//multiplication
 		1'b1: begin out_exp = temp_exponent - 126; out_man = temp_mantissa[14:8]; end
