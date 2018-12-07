@@ -235,12 +235,12 @@ always @(posedge clk) begin
       `OPNEG:  res = -rn1;
       `OPLDR:  res = d[rn1];
       `OPSTR:  begin res = rd1; d[rn1] <= res; end
-      //`OPADDF:
+      `OPADDF: res = addf_res;
       //`OPFTOI:
       `OPITOF: begin res = itof_res; end
-      //`OPMULF: 
-      //`OPRECF: 
-      //`OPSUBF: 
+     // `OPMULF: 
+    //  `OPRECF: 
+      `OPSUBF: res = subf_res;
       default: halt <= 1; // make it stop
     endcase
 
@@ -261,6 +261,98 @@ always @(posedge clk) begin
 end
 endmodule
 
+
+module sub_float(out, a, b, clk);
+    input `DATA a, b;
+    input clk;
+    output reg `DATA out;
+    reg out_sign;
+    reg [8:0] big_man, small_man, temp_man, temp_man2;
+    reg [6:0] out_man;
+    //wire [8:0] small_man;
+    reg [7:0] out_exp, big_exp, small_exp, shift_in, shift_amt;
+    wire [7:0] shift_out;
+    wire [7:0] a_exp, b_exp;
+    wire [7:0] a_man, b_man;
+    wire [4:0] num_zs;
+    wire tog_b_sign;
+
+    //just for viewing in GTKwave
+    assign a_exp = a `Fexp;
+    assign b_exp = b `Fexp;
+    assign a_man = {1'b1, a `Fman};
+    assign b_man = {1'b1, b `Fman};
+
+    //assign small_man = {2'b01, shift_out[6:0]};
+    
+//    barrel_shift addf_bs(shift_out, shift_in, shift_amt);
+    lead0s subf_zcount(num_zs,{temp_man, 7'h00});		
+
+    //flip sign bit of op2 
+    assign tog_b_sign = b `Fsign ^ 1'b1;
+
+    always@(*)begin
+	//if they're both 0 then output is 0
+	if (a == 16'h0000 && b == 16'h0000) out = 16'h0000;
+    	//if a is 0 then output is b
+	else if (a == 16'h0000) out = b;
+    	//if b is 0 then output is a
+    	else if (b == 16'h0000) out = a;
+    	//otherwise do the thing
+    	else begin
+
+	   //barrel shift, jk not anymore
+	   if (a `Fexp > b `Fexp)begin
+	       shift_amt = a `Fexp - b `Fexp;
+	       //shift_in = b `Fman;
+	       big_man = {2'b01, a `Fman};
+	       small_man = {2'b01, b `Fman} >> shift_amt;
+	       big_exp = a `Fexp;
+	       small_exp = b `Fexp;
+	   end else begin
+	       shift_amt = b `Fexp - a `Fexp;
+	       //shift_in = a `Fman;
+	       big_man = {2'b01, b `Fman};
+	       small_man = {2'b01, a `Fman} >> shift_amt;
+	       big_exp = b `Fexp;
+	       small_exp = a `Fexp;
+	   end
+
+
+	   //check signs
+	   if (a `Fsign == tog_b_sign)begin
+	       temp_man = big_man + small_man;
+	       out_sign = a `Fsign; //either sign would work
+	       if (temp_man[8])begin
+	   	//overflow
+	   	out_exp = big_exp + 1;
+	   	out_man = temp_man[7:1];
+	       end else begin
+		//set output exponent to big_exp
+		out_exp = big_exp;
+	   	out_man = temp_man[6:0];
+	       end
+	   
+	   end else begin
+	       //if signs are not equal 
+	       temp_man = big_man - small_man;	
+	       out_exp = big_exp;
+	       out_sign = (a `Fman > b`Fman) ? a `Fsign : tog_b_sign;
+	       temp_man2 = temp_man << num_zs;
+	       out_man = temp_man2[7:1];
+	   end 
+	
+
+
+	
+        end
+
+	out `Fsign = out_sign;   
+	out `Fexp = out_exp;
+	out `Fman = out_man;
+    end
+
+endmodule
 
 module add_float(out, a, b, clk);
     input `DATA a, b;
@@ -360,16 +452,6 @@ always @(*) begin
   by4 = (shift[2] ? {4'b0, by2[7:4]} : by2);
   dst = (shift[7:3] ? 0 : by4);
 end
-endmodule
-
-module sub_float(out, a, b, clk);
-    input `DATA a, b;
-    input clk;
-    output reg `DATA out;
-    reg out_sign;
-    reg [6:0] out_man;
-    reg [7:0] out_exp;
-
 endmodule
 
 module recip_float(out, in, clk);
