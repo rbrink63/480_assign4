@@ -185,10 +185,7 @@ end
 
 // stage 1: register read
 always @(posedge clk) begin
-    if (wait2 == 1'b1) begin 
-	wait1 = 1;
-    end
-    else if ((ir0 != `NOP) &&
+  if ((ir0 != `NOP) &&
       setsrd(ir1) &&
       ((usesrd(ir0) && (ir0 `RD == ir1 `RD)) ||
        (usesrn(ir0) && (ir0 `RN == ir1 `RD)))) begin
@@ -488,7 +485,8 @@ module recip_float(out, in, clk);
 	$readmemh("recf_lookup.txt",lookup,0,127);
     end
 
-    always @(posedge clk) begin
+    always @ (*)begin
+	//always @ (posedge clk)begin
 	if(in == 16'h0000)begin
 	 	out = 16'h0000;
     	end else begin
@@ -530,7 +528,8 @@ module mul_float(out, a, b, clk);
     //if diff_sign == 1 then the output is neg
     //if diff_sign == 0 then the output is pos
    
-    always @ (posedge clk)begin
+	always @ (*)begin
+	//always @ (posedge clk)begin
 	//if (a == 16'h0 || b == 16'h0)begin
 	//    out = 16'h0;	
     	//end
@@ -576,14 +575,15 @@ module float_to_int(out, in, clk);
 	
 	assign sign = in `Fsign;
 
-	always @ (posedge clk)begin
+	always @ (*)begin
+	//always @ (posedge clk)begin
 	    //take positive 8bit fraction part
 	    exponent = in `Fexp;
 	    mantissa = {man_pad, in `Fman};
 	    exp_less_bias = exponent - 127;
 	    left_shift = mantissa << exp_less_bias;
 
-            out_temp = {(exp_less_bias > 0) ? left_shift[22:7] : 22'h0};
+            out_temp = {(exp_less_bias >= 0) ? left_shift[22:7] : 22'h0};
 
 	    if (sign)begin 
 		out = (out_temp ^ 16'hFFFF) + 1'b1;
@@ -622,7 +622,8 @@ module int_to_float(out, in, clk);
 		extra_zeros = 7'b0;
 	end	
 	
-	always @(posedge clk) begin
+	always @(*) begin
+	//always @(posedge clk) begin
 		if(in == 16'h0000) begin
 			out = 16'h0000;
 		end
