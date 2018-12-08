@@ -1,0 +1,119 @@
+\documentclass{article}
+
+\usepackage{amssymb}
+\setcounter{tocdepth}{3}
+\usepackage{graphicx}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{url}
+\usepackage{rotating}
+\usepackage{float}
+
+
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{multirow}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage[parfill]{parskip}
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
+
+\usepackage[letterpaper,top=1in,bottom=1in,right=1in,left=1in]{geometry}
+
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\pagestyle{fancy}
+\lhead{Kistler, Johnston, Wahlbrink}
+\chead{EE 480}
+\rhead{Assignment 3: Pipelined PinKY}
+\lfoot{}
+\cfoot{}
+\rfoot{Page \thepage}
+
+
+\begin{document}
+\title{Assignment 3: Pipelined PinKY}
+
+\author{Ben Kistler, Jordan Johnston, Reid Wahlbrink}
+
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{multicols}{2}
+\section{Abstract}
+The assignment is to build a pipelined implementation of PinKY. The purpose of this assignment is to expand on what we did in
+the last assignment and make a more complex processor that takes advantage of a pipelined implementation and learn more
+about problems like control flow, and managing variables and registers in a different way than before. 
+
+
+\section{General Approach}
+Our processor is made up of four stages, each stage is implemented in separate modules that are instantiated in a processor
+module. The pipeline is laid out in a similar way to the one described in the project description and what we went over in class. See Figure 1 for a visual overview of the design we attempted to implement.
+Stage 0 owns the program counter as well as the instruction memory. It increments the PC and feeds the instruction register
+into the next stage. Stage 1 owns the PRE-instruction and at first it owned the regfile as well. We ultimately moved the regfile outside of stage 1 to the processor module. Stage 1 splits up the instruction from the
+instruction register and then determines what happens going forward. It then determines if PRE is needed and applies it. After
+that it feeds the PC into the next stage, as well as the instruction. Stage 2 owns the ALU and carries out each instruction as it is
+fed into this stage. It reads the data from memory, executes the instruction then outputs the result and the address of the result.
+Stage 3 owns Z and connects everything together. It pulls the destination register, condition code and the opcode from the
+instruction, with that information it then checks if the instruction is an S or not and sets Z accordingly. Finally, it writes the result
+of the ALU from stage 2 into the Regfile and moves back to stage 0 to continue the pipeline. Halt is fed through each stage and
+then outputted from stage 3 to the processor module so that when it is called the pipeline completes the instructions still on
+going. The PC is also fed through each stage so that it increments correctly. Throughout the design we take advantage of no
+ops to ensure accuracy. 
+  
+  \section{Issues}
+The first issue we ran into was the PC was incrementing at the same time as the instruction word (ir) because we were using $<=$
+on both of them in an always @(posedge clk) begin/end block. This meant we were "missing" the 0th instruction in instruction
+memory. We changed ir to a wire and switched it to continual assign instead of procedural and it resolved the issue. For stage 1
+we have a macro that handles the PRE instruction, it checks to see if there is an immediate in the instruction then checks if
+there is a PRE. If there is both it concatenates the immediate and the PRE constant. Else it sign extends the immediate. We
+had a problem at first where we weren't getting the correct value when concatenating the PRE and IMM values, but later
+realized it was a syntax error and rearranged the variable being concatenated. Another problem we had implementing the PRE
+was the PRE value was being recorded with every instruction, to fix this we set an if statement to check when it should be
+recorded and when not. The PRE in general gave us a bunch of problems, especially with the macro. The main problems just
+came from handling the syntax. To store the data to the register we had to do the data store first then set value\_out, the other
+way around it gave an error. And we were getting bad results on the result and found out that it was the order of the MACRO
+concatenation, once we swapped the parameters it solved the problem. We inserted No-ops to fix the issues that came from
+having subsequent instructions with the same destination registers, to give the system time to properly update the Regfile and
+yield the correct results. Other than that we had to resolve issues that involved the instruction set. For example, we thought our
+logic to handle NE and EQ was wrong, but it turned out our AIK spec and $`$DEFINES in Verilog just didn't match. One of them
+had NE EQ and the other had EQ NE so the logic was fine, we just had to make our AIK spec match our Verilog code. We ended up handling data
+dependences by also changing our AIK spec to insert 3 no-ops after every instruction (w/ the exception of SYS) resulting is us
+correctly handling Z, NE and EQ. We were not able to properly implement the control flow, we tried putting an array that would
+track which registers were in the pipeline. In stage zero we would check Rd and insert 4 into the array because it would take
+4 clock cycles for that Rd to move through the pipeline. With each clock cycle we would then decrement that value. The thought
+was to check what registers were in the pipeline, and insert no-ops when needed. The array wasn't an input or output so we
+couldn't view it using GTK wave and couldn't see if it was working properly. We stopped there due to time constraints. The
+second idea was to in addition of feeding the instruction through each stage, we considered tracking each instruction word in
+stage zero. The thought was to check Rd using the instruction word stage 3, and if it was 15 then we need to jump the PC. To
+do this we would send the PC from stage 3 back to stage 1 and use that instead of the normally incremented PC
+from stage 1. 
+
+  
+  \section{Testing}
+To test this project, we used the testbench from the previous assignment and used GTK wave to look at the behavior of our
+processor. We compiled our code using iVerilog and simulated it using VVP. We used the instruction set made by Reid and his group. To get results that we could use we inputted an empty
+Regfile and then a file containing commands to run through the processor. We tested several commands to ensure that we
+were getting the correct results and it was behaving the way we wanted. We payed extra attention to PRE, instructions with S
+and subsequent instruction storing the result to the same reg. The purpose of this was to ensure that functions like PRE, Z, and
+conditional instructions all worked properly. 
+  
+\end{multicols}
+
+\begin{figure}[h]
+\label{fig:1}
+\caption{Attempted Processor Design}
+\centering
+\includegraphics[width=\textwidth]{diagram.png}
+\end{figure}
+
+
+\end{document}

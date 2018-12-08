@@ -213,12 +213,12 @@ always @(posedge clk) begin
     // condition says nothing happens
     jump <= 0;
     wait2 <= 0;
- end else if (ir1 `OP >= 5'h11 && ir1 `OP <= 5'h16) begin
-    //float operation, need to stall
-     wait2 = 1;
-     ir1 = `NOP;
+// end else if (ir1 `OP >= 5'h11 && ir1 `OP <= 5'h16) begin
+//    //float operation, need to stall
+//     wait2 = 1;
+//     ir1 = `NOP;
   end else begin
-    wait2 = 0;
+//    wait2 = 0;
     // let the instruction execute
     case (ir1 `OP)
       `OPPRE:  begin end // do nothing
@@ -236,10 +236,10 @@ always @(posedge clk) begin
       `OPLDR:  res = d[rn1];
       `OPSTR:  begin res = rd1; d[rn1] <= res; end
       `OPADDF: res = addf_res;
-      //`OPFTOI:
-      `OPITOF: begin res = itof_res; end
-     // `OPMULF: 
-    //  `OPRECF: 
+      `OPFTOI: res = ftoi_res;
+      `OPITOF: res = itof_res; 
+      `OPMULF: res = mulf_res;
+      `OPRECF: res = recf_res;
       `OPSUBF: res = subf_res;
       default: halt <= 1; // make it stop
     endcase
@@ -336,10 +336,20 @@ module sub_float(out, a, b, clk);
 	   end else begin
 	       //if signs are not equal 
 	       temp_man = big_man - small_man;	
-	       out_exp = big_exp;
-	       out_sign = (a `Fman > b`Fman) ? a `Fsign : tog_b_sign;
+	       if (a `Fexp != b `Fexp)begin
+		   out_sign = (a `Fexp > b`Fexp) ? a `Fsign : tog_b_sign;
+	       end else begin
+		    out_sign = (a `Fman > b`Fman) ? a `Fsign : tog_b_sign;
+		end
+	       if (temp_man[8])begin
+		  //result has smaller exponent than either operand
+	        out_exp = big_exp - 1 - num_zs;
+	   	out_man = temp_man[6:0] << 1;
+	       end else begin
 	       temp_man2 = temp_man << num_zs;
+	        out_exp = big_exp + 1 - num_zs;
 	       out_man = temp_man2[7:1];
+	       end
 	   end 
 	
 
@@ -424,10 +434,20 @@ module add_float(out, a, b, clk);
 	   end else begin
 	       //if signs are not equal 
 	       temp_man = big_man - small_man;	
-	       out_exp = big_exp;
-	       out_sign = (a `Fman > b`Fman) ? a `Fsign : b `Fsign;
+	       if (a `Fexp != b `Fexp)begin
+		   out_sign = (a `Fexp > b`Fexp) ? a `Fsign : b `Fsign;
+	       end else begin
+		    out_sign = (a `Fman > b`Fman) ? a `Fsign : b `Fsign;
+		end
+	       if (temp_man[8])begin
+		  //result has smaller exponent than either operand
+	        out_exp = big_exp - 1 - num_zs;
+	   	out_man = temp_man[6:0] << 1;
+	       end else begin
 	       temp_man2 = temp_man << num_zs;
+	        out_exp = big_exp + 1 - num_zs;
 	       out_man = temp_man2[7:1];
+	       end
 	   end 
 	
 
