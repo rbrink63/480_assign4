@@ -89,6 +89,7 @@ always @(reset) begin
 //readmemh0(r); // register file
   $readmemh("regfile.txt",r,0,15);
   $readmemh("instrmem.txt",i,0,999);
+  $readmemh("datamem.txt",d,0,999);
 //readmemh1(d); // data memory
 //readmemh2(i); // instruction memory
 end

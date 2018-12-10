@@ -30,18 +30,18 @@
 \usepackage{fancyhdr}
 \usepackage{hyperref}
 \pagestyle{fancy}
-\lhead{Kistler, Johnston, Wahlbrink}
+\lhead{Harvey, Smith, Wahlbrink}
 \chead{EE 480}
-\rhead{Assignment 3: Pipelined PinKY}
+\rhead{Assignment 4: Phloating Point PinKY}
 \lfoot{}
 \cfoot{}
 \rfoot{Page \thepage}
 
 
 \begin{document}
-\title{Assignment 3: Pipelined PinKY}
+\title{Assignment 4: Phloating Point PinKY}
 
-\author{Ben Kistler, Jordan Johnston, Reid Wahlbrink}
+\author{William Harvey, Ben Smith, Reid Wahlbrink}
 
 
 \maketitle
@@ -49,71 +49,39 @@
 
 \begin{multicols}{2}
 \section{Abstract}
-The assignment is to build a pipelined implementation of PinKY. The purpose of this assignment is to expand on what we did in
-the last assignment and make a more complex processor that takes advantage of a pipelined implementation and learn more
-about problems like control flow, and managing variables and registers in a different way than before. 
+The assignment is to implement the PinKY floating point instructions in a pipelined processor.
 
 
 \section{General Approach}
-Our processor is made up of four stages, each stage is implemented in separate modules that are instantiated in a processor
-module. The pipeline is laid out in a similar way to the one described in the project description and what we went over in class. See Figure 1 for a visual overview of the design we attempted to implement.
-Stage 0 owns the program counter as well as the instruction memory. It increments the PC and feeds the instruction register
-into the next stage. Stage 1 owns the PRE-instruction and at first it owned the regfile as well. We ultimately moved the regfile outside of stage 1 to the processor module. Stage 1 splits up the instruction from the
-instruction register and then determines what happens going forward. It then determines if PRE is needed and applies it. After
-that it feeds the PC into the next stage, as well as the instruction. Stage 2 owns the ALU and carries out each instruction as it is
-fed into this stage. It reads the data from memory, executes the instruction then outputs the result and the address of the result.
-Stage 3 owns Z and connects everything together. It pulls the destination register, condition code and the opcode from the
-instruction, with that information it then checks if the instruction is an S or not and sets Z accordingly. Finally, it writes the result
-of the ALU from stage 2 into the Regfile and moves back to stage 0 to continue the pipeline. Halt is fed through each stage and
-then outputted from stage 3 to the processor module so that when it is called the pipeline completes the instructions still on
-going. The PC is also fed through each stage so that it increments correctly. Throughout the design we take advantage of no
-ops to ensure accuracy. 
-  
-  \section{Issues}
-The first issue we ran into was the PC was incrementing at the same time as the instruction word (ir) because we were using $<=$
-on both of them in an always @(posedge clk) begin/end block. This meant we were "missing" the 0th instruction in instruction
-memory. We changed ir to a wire and switched it to continual assign instead of procedural and it resolved the issue. For stage 1
-we have a macro that handles the PRE instruction, it checks to see if there is an immediate in the instruction then checks if
-there is a PRE. If there is both it concatenates the immediate and the PRE constant. Else it sign extends the immediate. We
-had a problem at first where we weren't getting the correct value when concatenating the PRE and IMM values, but later
-realized it was a syntax error and rearranged the variable being concatenated. Another problem we had implementing the PRE
-was the PRE value was being recorded with every instruction, to fix this we set an if statement to check when it should be
-recorded and when not. The PRE in general gave us a bunch of problems, especially with the macro. The main problems just
-came from handling the syntax. To store the data to the register we had to do the data store first then set value\_out, the other
-way around it gave an error. And we were getting bad results on the result and found out that it was the order of the MACRO
-concatenation, once we swapped the parameters it solved the problem. We inserted No-ops to fix the issues that came from
-having subsequent instructions with the same destination registers, to give the system time to properly update the Regfile and
-yield the correct results. Other than that we had to resolve issues that involved the instruction set. For example, we thought our
-logic to handle NE and EQ was wrong, but it turned out our AIK spec and $`$DEFINES in Verilog just didn't match. One of them
-had NE EQ and the other had EQ NE so the logic was fine, we just had to make our AIK spec match our Verilog code. We ended up handling data
-dependences by also changing our AIK spec to insert 3 no-ops after every instruction (w/ the exception of SYS) resulting is us
-correctly handling Z, NE and EQ. We were not able to properly implement the control flow, we tried putting an array that would
-track which registers were in the pipeline. In stage zero we would check Rd and insert 4 into the array because it would take
-4 clock cycles for that Rd to move through the pipeline. With each clock cycle we would then decrement that value. The thought
-was to check what registers were in the pipeline, and insert no-ops when needed. The array wasn't an input or output so we
-couldn't view it using GTK wave and couldn't see if it was working properly. We stopped there due to time constraints. The
-second idea was to in addition of feeding the instruction through each stage, we considered tracking each instruction word in
-stage zero. The thought was to check Rd using the instruction word stage 3, and if it was 15 then we need to jump the PC. To
-do this we would send the PC from stage 3 back to stage 1 and use that instead of the normally incremented PC
-from stage 1. 
+Because the focus of this assignment was on the floating point implementation we decided to use Dr. Dietz's sample solution for the PinKY pipelined processor. We thought this would help us avoid headaches with the pipelined implementation's from our previous groups. As such we also adopted Dr. Dietz's AIK specification and Instruction Encoding. Dr. Dietz's processor has 3 stages named Stage 0, Stage 1, and Stage 2. His processor also seems to properly handle register dependencies, setting the Z flag, and conditional execution. We instantiated our floating point operation modules in the processor module and we latched their results into the res register in Stage 2.
 
+We tested our processor using Icarus Verilog instead of Dr. Dietz's CGI website. This means our code is not written to support the CGI website (specifically the syntax for readmem()) Our processor uses readmem() to read in instructions, data, registers, and a lookup table for RECF.
+
+As discussed in class we found that it was possible to implement the floating point instructions in a single clock cycle. To achieve this we had to use always @ (*) rather than always @ (posedge clk). While this would never pass timing constraints in a real chip this is possible in the simulator. Getting the timing correct would have more to do with the pipeline than implementing the float operations and for that reason passing timing was not a requirement for this assignment.
+
+In addition to using Dr. Dietz's pipelined processor, AIK spec, and instruction encoding another resource we used was a previous 480 student's code linked \href{https://github.com/darthburkhart/Project4/blob/master/floatpipe.v} {here}. We talked to Dr. Dietz about whether it was acceptable to use this resource and he said that it was. But he gave us 3 pieces of advice. 1. Cite the reference.  2. Don't copy exactly. 3. Don't assume it's correct. We followed this advice closely by being careful to only use the resource as a logical reference and to thoroughly test our modules. Dr. Dietz said that our instruction set (and as a result our processor) was different enough that he didn't have any issues with us using the code as a logical reference for the floating point ops.
+
+  \section{Issues}
+During development we had to resolve several issues with our processor. When we first started out we were using a pipelined processor from one of our member's previous groups. While working on ITOF we noticed that every other instruction was not happening because of interlock issues. We troubleshot this for a while by trying to make use of the interlock system which seemed to be implemented in the processor and alternately by trying to add in our own. We didn't have success with either method. Ultimately this was resolved by switching over to using Dr. Dietz's processor.
+
+There were several occasions where we thought our float operation modules were not working properly but after debugging we realized we had incorrectly generated the instructions. Either the instruction was not the one we were trying to test or the operands were not what we expected.  These issues had simple solutions but took a lot of time to discover.
+
+We tried to use to the Barrel Shifter code provided in Dr. Dietz's slides but we could never modify it to handle our inputs correctly. The values we needed to shift were not 8-bits and we couldn't figure out how to change the Barrel Shifter to accommodate different size inputs. We ended up using the $<<$ and $>>$ operators instead.
+
+Our ITOF module wasn't handling negative integers properly at first. We discovered that the issue was our lead0s counter returning 0 leading 0s for all negative integers. This makes sense because the sign bit of a negative integer is 1. To fix the problem we took the two's complement of the negative integer before sending it to the lead0s module.
+
+Our ADDF and SUBF modules ended up being nearly identical with the exception of toggling the sign bit of Op2 for SUBF. This was done because 5 - 3 is the same and 5 + -3. Even though these modules are so similar we did keep ADDF and SUBF as separate modules just in case we discovered the need for different logic for the two operations.
+
+In ADDF and SUBF we needed to determine which operand was larger to appropriately set the sign of the result. At first our code only compared the two mantissas when trying to determine which operand is larger. This assumes that the two operands exponents are always the same, which is obviously not the case. So we had to change the code to first compare the exponents of the two operands. If the exponents are different we know which operand is larger and we can set the sign of the output at that point. If the exponents are the same then we needed to compare the mantissas of the operands to decide which one is bigger. It should be noted that when adding and subtracting floating point numbers you do shift the smaller operand to have the same exponent as the larger one for part of the operation. However it was still necessary for us to determine which incoming operand had the larger exponent to set the sign correctly.
+
+One other issue we had with ADDF and SUBF is that we weren't getting the correct results for cases where the output's exponent is smaller than either of the operands' exponents. One example is -2 + 3 = -1. This situation involves the number of leading zeros in the intermediate register temp\_man. To handle this special case we had to add another if/else block to our modules and do one of two operations to the larger of the two operands exponents'. For one case the output exponent is equal to the larger of the two operands' exponents - 1 - num\_zeros. For the other case the output exponent is equal to the larger of the two operands' exponents + 1 - num\_zeros.
+
+One last issue of note was with our FTOI module. It seemed to be properly converting 0 as well as numbers $>$1 or $<$-1 but it was incorrectly returning a converted value of 0 for 1 and -1. After debugging we realized this was due to an error in our ternary operator which set the output in the case of 0. The expression we used had exp\_less\_bias $>$ 0 when we needed to have exp\_less\_bias $>=$ 0 to get 1 and -1 to convert properly.
   
   \section{Testing}
-To test this project, we used the testbench from the previous assignment and used GTK wave to look at the behavior of our
-processor. We compiled our code using iVerilog and simulated it using VVP. We used the instruction set made by Reid and his group. To get results that we could use we inputted an empty
-Regfile and then a file containing commands to run through the processor. We tested several commands to ensure that we
-were getting the correct results and it was behaving the way we wanted. We payed extra attention to PRE, instructions with S
-and subsequent instruction storing the result to the same reg. The purpose of this was to ensure that functions like PRE, Z, and
-conditional instructions all worked properly. 
+To test each module we identified common test cases and then verified the correct output using GTKwave. Test cases included operands with similar exponents, operands with different exponents, operations with 0, operations with two positive numbers, operations with two negative numbers, and operations with one positive and one negative number. For ITOF and FTOI we tested known special cases such as the denormal 0. For one positive and one negative operand we even tested with each operand in the Op2 field (ex. -3 + 2 and 2 + -3). By no means was the processor exhaustively tested but we do feel that we thoroughly tested common cases as well as a few special cases for each instruction.
+
   
 \end{multicols}
-
-\begin{figure}[h]
-\label{fig:1}
-\caption{Attempted Processor Design}
-\centering
-\includegraphics[width=\textwidth]{diagram.png}
-\end{figure}
-
 
 \end{document}
