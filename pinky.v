@@ -4,7 +4,7 @@
 `define SIZE	[65535:0]
 `define INST	[15:0]
 `define CC	[15:14]
-`define OP	[14:9]
+`define OP	[13:9]
 `define IORR	[8]
 `define RD	[7:4]
 `define RN	[3:0]
